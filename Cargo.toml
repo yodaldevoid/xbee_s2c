@@ -1,0 +1,9 @@
+[package]
+name = "xbee_s2c"
+version = "0.1.0"
+authors = ["Gabriel Smith <ga29smith@gmail.com>"]
+
+[dependencies]
+bitflags = "^1.0"
+embedded-hal = { version = "0.1.2", features = ["unproven"] }
+nb = "0.1.1"
