@@ -672,6 +672,7 @@ impl<'a> ApiData<'a> {
 }
 
 enum TxRequestState {
+    FrameType,
     FrameId,
     Addr,
     Options,
@@ -707,7 +708,7 @@ where
         };
 
         TxRequestIter {
-            state: TxRequestState::FrameId,
+            state: TxRequestState::FrameType,
             frame_id,
             addr,
             addr_shift,
@@ -726,6 +727,14 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.state {
+            TxRequestState::FrameType => {
+                self.state = TxRequestState::FrameId;
+                match self.addr_shift {
+                    56 => Some(0x00), // TxRequest64Addr
+                    8 => Some(0x01), // TxRequest16Addr
+                    _ => unreachable!()
+                }
+            }
             TxRequestState::FrameId => {
                 self.state = TxRequestState::Addr;
                 Some(self.frame_id)
@@ -751,6 +760,9 @@ where
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         let size = match self.state {
+            TxRequestState::FrameType => {
+                2 + ((self.addr_shift as usize)/8 + 1) + 1 + self.data.len()
+            }
             TxRequestState::FrameId => {
                 1 + ((self.addr_shift as usize)/8 + 1) + 1 + self.data.len()
             }
@@ -775,6 +787,9 @@ where
 {
     fn len(&self) -> usize {
         match self.state {
+            TxRequestState::FrameType => {
+                2 + ((self.addr_shift as usize)/8 + 1) + 1 + self.data.len()
+            }
             TxRequestState::FrameId => {
                 1 + ((self.addr_shift as usize)/8 + 1) + 1 + self.data.len()
             }
