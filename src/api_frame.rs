@@ -875,4 +875,35 @@ mod test {
         assert_eq!(unpacked_data, &[0x01, 0x01, 0x50, 0x01, 0x00, 0x48, 0x65, 0x6C, 0x6C, 0x6F]);
         assert_eq!(rem, &[0x7E, 0x01, 0x02]);
     }
+
+    #[test]
+    fn packing_test() {
+        use arrayvec::ArrayVec;
+
+        let data = [
+            0x00,
+            0x01,
+            0x00, 0x13, 0xA2, 0x00, 0x41, 0x5D, 0x1D, 0xBB,
+            0x00,
+            0x54, 0x65, 0x73, 0x74, 0x69, 0x6E, 0x67,
+        ];
+        let test_frame = [
+            0x7E,
+            0x00, 0x12,
+            0x00,
+            0x01,
+            0x00, 0x13, 0xA2, 0x00, 0x41, 0x5D, 0x1D, 0xBB,
+            0x00,
+            0x54, 0x65, 0x73, 0x74, 0x69, 0x6E, 0x67,
+            0xF5,
+        ];
+        let mut vec: ArrayVec<[u8; 32]> = ArrayVec::new();
+        let packed_frame = FramePacker::new(
+            data.iter().map(|v| *v),
+            false,
+            false,
+        ).expect("packing error");
+        vec.extend(packed_frame);
+        assert_eq!(vec.as_slice(), &test_frame[..]);
+    }
 }
