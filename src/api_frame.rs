@@ -78,11 +78,11 @@ where
             }
             FramePackingState::Data => {
                 if let Some(val) = self.data.next() {
-                    self.checksum.wrapping_add(val);
+                    self.checksum = self.checksum.wrapping_add(val);
                     Some(val)
                 } else {
                     self.state = FramePackingState::Done;
-                    Some(self.checksum)
+                    Some(0xFF - self.checksum)
                 }
             }
             FramePackingState::Done => None,
