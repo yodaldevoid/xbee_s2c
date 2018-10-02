@@ -2,23 +2,73 @@
 
 #![no_std]
 
+extern crate arraydeque;
+extern crate arrayvec;
 #[macro_use]
 extern crate bitflags;
 extern crate embedded_hal;
+#[macro_use]
 extern crate nb;
 
 pub mod api_frame;
 
-use api_frame::{FramePacker, TxOptions, TxRequestIter};
+use core::marker::PhantomData;
 
+use api_frame::{
+    ApiData,
+    ApiUnpackError,
+    FramePacker,
+    TxOptions,
+    TxRequestIter,
+};
+
+use arraydeque::ArrayDeque;
+use arrayvec::{Array, ArrayVec};
 use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::blocking::serial::Write as BlockingWrite;
 use embedded_hal::digital::{InputPin, OutputPin};
 use embedded_hal::serial::{Read, Write};
 use embedded_hal::spi::FullDuplex;
 
-const BROADCAST_ADDR: u16 = 0xFFFF;
-const COORDINATOR_ADDR: u16 = 0xFFFE;
+pub const BROADCAST_ADDR: u16 = 0xFFFF;
+pub const COORDINATOR_ADDR: u16 = 0xFFFE;
+
+trait XBeeQueue {
+    fn remove_until_start(&mut self) -> Result<usize, ()>;
+    fn remove_exact(&mut self, amount: usize) -> Result<(), ()>;
+}
+
+impl<A> XBeeQueue for ArrayVec<A>
+where
+    A: Array<Item=u8>,
+{
+    fn remove_until_start(&mut self) -> Result<usize, ()> {
+        match self.iter().position(|c| c == &api_frame::START) {
+            Some(size) => {
+                self.remove_exact(size)?;
+                Ok(size)
+            },
+            None => {
+                let len = self.len();
+                self.clear();
+                Ok(len)
+            }
+        }
+    }
+
+    fn remove_exact(&mut self, amount: usize) -> Result<(), ()> {
+        if amount == 0 {
+            return Ok(())
+        }
+
+        if amount <= self.len() {
+            self.drain(0..amount);
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+}
 
 // TODO: builders
 
@@ -36,39 +86,25 @@ pub struct XBeeTransparent<'a, 'b, U: 'a, D: 'b> {
     guard_time: u16,
 }
 
-trait XBeeApi {
-    type Error;
-
-    fn send_data(&mut self, frame_id: u8, addr: Addr, data: &[u8]) -> Result<(), Self::Error>;
-    fn send_data_no_ack(&mut self, frame_id: u8, addr: Addr, data: &[u8]) -> Result<(), Self::Error>;
-    fn at_command(&mut self, frame_id: u8, at_cmd: [u8; 2], params: &[u8]);
-    fn at_queue_param(&mut self, frame_id: u8, at_cmd: [u8; 2], params: &[u8]);
-    fn remote_at_command(&mut self, frame_id: u8, addr: Addr, at_cmd: [u8; 2], params: &[u8]);
+#[derive(Copy, Clone, Debug)]
+pub enum XBeeApiError {
+    Unpack(ApiUnpackError),
+    Parse(()),
 }
 
-pub struct XBeeApiUart<'a, U: 'a> {
-    serial: &'a mut U,
+pub struct XBeeApiSpi<'a, 'b, 'c, SER: 'a, CS: 'b, ATTN: 'c> {
+    serial: &'a mut SER,
+    cs: Option<&'b mut CS>,
+    attn: &'c mut ATTN,
+
+    // TODO: make generic and allow passing in buffers
+    tx_queue: ArrayDeque<[u8; 512]>,
+    rx_queue: ArrayVec<[u8; 512]>,
 }
 
-pub struct XBeeApiEscapedUart<'a, U: 'a> {
-    serial: &'a mut U,
-}
-
-pub struct XBeeApiSpi<'a, 'b, 'c, S: 'a, C: 'b, A: 'c> {
-    serial: &'a mut S,
-    cs: &'b mut C,
-    attn: &'c mut A,
-}
-
-pub struct XBeeApiEscapedSpi<'a, 'b, 'c, S: 'a, C: 'b, A: 'c> {
-    serial: &'a mut S,
-    cs: &'b mut C,
-    attn: &'c mut A,
-}
-
-impl<'a, 'b, E, U, D> XBeeTransparent<'a, 'b, U, D>
+impl<'a, 'b, SER_ERR, U, D> XBeeTransparent<'a, 'b, U, D>
 where
-    U: Read<u8, Error = E> + BlockingWrite<u8, Error = E>,
+    U: Read<u8, Error = SER_ERR> + BlockingWrite<u8, Error = SER_ERR>,
     D: DelayMs<u16>,
 {
     pub fn new(
@@ -86,7 +122,7 @@ where
     }
 
     // TODO: maybe return result to show that the command has
-    pub fn enter_command_mode(&mut self) -> Result<(), E> {
+    pub fn enter_command_mode(&mut self) -> Result<(), SER_ERR> {
         // wait for guard time
         self.timer.delay_ms(self.guard_time);
         // send command character x3
@@ -109,11 +145,6 @@ where
             }
         }
         Ok(())
-    }
-
-    pub fn to_api(self) -> XBeeApiUart<'a, U> {
-        // TODO: AT command
-        XBeeApiUart::new(self.serial)
     }
 }
 
@@ -143,37 +174,114 @@ where
     }
 }
 
-impl<'a, E, U> XBeeApiUart<'a, U>
+impl<'a, 'b, 'c, SER_ERR, SER, CS, ATTN> XBeeApiSpi<'a, 'b, 'c, SER, CS, ATTN>
 where
-    U: Read<u8, Error = E> + BlockingWrite<u8, Error = E>,
+    SER: FullDuplex<u8, Error = SER_ERR>,
+    CS: OutputPin,
+    ATTN: InputPin,
 {
-    pub fn new(uart: &'a mut U) -> XBeeApiUart<'a, U> {
-        // TODO: check that we are in API mode and if not, switch
-        XBeeApiUart{ serial: uart }
+    pub fn new(
+        spi: &'a mut SER,
+        cs: Option<&'b mut CS>,
+        attn: &'c mut ATTN,
+    ) -> XBeeApiSpi<'a, 'b, 'c, SER, CS, ATTN> {
+        XBeeApiSpi {
+            serial: spi,
+            cs,
+            attn,
+            tx_queue: ArrayDeque::new(),
+            rx_queue: ArrayVec::new(),
+        }
     }
 
-    // TODO: set correct size for delay
-    pub fn to_transpartent<'b, D>(
-        self,
-        delay: &'b mut D,
-        cmd_char: u8,
-        guard_time: u16,
-    ) -> XBeeTransparent<'a, 'b, U, D>
-    where
-        D: DelayMs<u16>,
-    {
-        // TODO: AT command
-        XBeeTransparent::new(self.serial, delay, cmd_char, guard_time)
+    pub fn tx_queue_empty(&self) -> bool {
+        self.tx_queue.is_empty()
+    }
+
+    pub fn tx_queue_full(&self) -> bool {
+        self.tx_queue.is_full()
+    }
+
+    pub fn rx_queue_empty(&self) -> bool {
+        self.rx_queue.is_empty()
+    }
+
+    pub fn rx_queue_full(&self) -> bool {
+        self.rx_queue.is_full()
+    }
+
+    // TODO: differentiate between errors from reading and writing
+    pub fn transmit_and_receive(&mut self) -> Result<bool, SER_ERR> {
+        let mut val_read = false;
+        let mut attn_val;
+        while {
+            attn_val = self.attn.is_high();
+            !self.tx_queue.is_empty() || !attn_val
+        } {
+            let tx = if !self.tx_queue.is_empty() {
+                // TODO: don't unwrap, pass up error
+                self.tx_queue.pop_front().unwrap()
+            } else {
+                0xFF
+            };
+
+            // TODO: better error handling?
+            block!(self.serial.send(tx))?;
+
+            let rx = block!(self.serial.read())?;
+            if !attn_val {
+                // TODO: don't unwrap, pass up error
+                self.rx_queue.try_push(rx).unwrap();
+                val_read = true;
+                if self.rx_queue.is_full() {
+                    break;
+                }
+            }
+        }
+
+        Ok(val_read)
+    }
+
+    pub fn get_sender_receiver<'d>(&'d mut self) -> (XBeeApiSender<'d, SER_ERR>, XBeeApiReceiver<'d, SER_ERR>) {
+        let tx_queue = &mut self.tx_queue;
+        let rx_queue = &mut self.rx_queue;
+
+        let sender = XBeeApiSender {
+            tx_queue,
+            _error: PhantomData,
+        };
+        let receiver = XBeeApiReceiver {
+            rx_queue,
+            _error: PhantomData,
+        };
+
+        (sender, receiver)
     }
 }
 
-impl<'a, E, U> XBeeApi for XBeeApiUart<'a, U>
-where
-    U: Read<u8, Error = E> + BlockingWrite<u8, Error = E>,
-{
-    type Error = E;
+#[derive(Debug)]
+pub struct XBeeApiSender<'a, SER_ERR> {
+    // TODO: make generic
+    tx_queue: &'a mut ArrayDeque<[u8; 512]>,
+    _error: PhantomData<*const SER_ERR>,
+}
 
-    fn send_data(&mut self, frame_id: u8, addr: Addr, data: &[u8]) -> Result<(), E> {
+impl<'a, SER_ERR> XBeeApiSender<'a, SER_ERR> {
+    pub fn queue_empty(&self) -> bool {
+        self.tx_queue.is_empty()
+    }
+
+    pub fn queue_full(&self) -> bool {
+        self.tx_queue.is_full()
+    }
+
+    pub fn send_data_raw(&mut self, data: &[u8]) -> Result<(), SER_ERR> {
+        // TODO: error handling if we do not have enough space
+        self.tx_queue.extend(data.iter().map(|&x| x));
+        Ok(())
+    }
+
+    pub fn send_data(&mut self, frame_id: u8, addr: Addr, data: &[u8]) -> Result<(), SER_ERR> {
         let tx_request = TxRequestIter::new(
             frame_id,
             addr,
@@ -186,13 +294,12 @@ where
             false,
         ).expect("packing error"); // TODO:
 
-        for byte in frame {
-            self.serial.bwrite_all(&[byte])?;
-        }
-        self.serial.bflush()
+        // TODO: error handling if we do not have enough space
+        self.tx_queue.extend(frame);
+        Ok(())
     }
 
-    fn send_data_no_ack(&mut self, frame_id: u8, addr: Addr, data: &[u8]) -> Result<(), E> {
+    pub fn send_data_no_ack(&mut self, frame_id: u8, addr: Addr, data: &[u8]) -> Result<(), SER_ERR> {
         let tx_request = TxRequestIter::new(
             frame_id,
             addr,
@@ -205,40 +312,65 @@ where
             false,
         ).expect("packing error"); // TODO:
 
-        for byte in frame {
-            self.serial.bwrite_all(&[byte])?;
-        }
-        self.serial.bflush()
+        // TODO: error handling if we do not have enough space
+        self.tx_queue.extend(frame);
+        Ok(())
     }
 
-    fn at_command(&mut self, frame_id: u8, at_cmd: [u8; 2], params: &[u8]) {
+    pub fn at_command(&mut self, frame_id: u8, at_cmd: [u8; 2], params: &[u8]) {
         unimplemented!()
     }
 
-    fn at_queue_param(&mut self, frame_id: u8, at_cmd: [u8; 2], params: &[u8]) {
+    pub fn at_queue_param(&mut self, frame_id: u8, at_cmd: [u8; 2], params: &[u8]) {
         unimplemented!()
     }
 
-    fn remote_at_command(&mut self, frame_id: u8, addr: Addr, at_cmd: [u8; 2], params: &[u8]) {
+    pub fn remote_at_command(&mut self, frame_id: u8, addr: Addr, at_cmd: [u8; 2], params: &[u8]) {
         unimplemented!()
     }
 }
 
-impl<'a, 'b, 'c, E, S, C, A> XBeeApiSpi<'a, 'b, 'c, S, C, A>
-where
-    S: FullDuplex<u8, Error = E>,
-    C: OutputPin,
-    A: InputPin,
-{
-    pub fn new_spi(
-        spi: &'a mut S,
-        cs: &'b mut C,
-        attn: &'c mut A,
-    ) -> XBeeApiSpi<'a, 'b, 'c, S, C, A> {
-        XBeeApiSpi {
-            serial: spi,
-            cs,
-            attn,
+impl<'a, SER_ERR> Drop for XBeeApiSender<'a, SER_ERR> {
+    fn drop(&mut self) {}
+}
+
+pub struct XBeeApiReceiver<'a, SER_ERR> {
+    // TODO: make generic
+    rx_queue: &'a mut ArrayVec<[u8; 512]>,
+    _error: PhantomData<*const SER_ERR>,
+}
+
+impl<'a, SER_ERR> XBeeApiReceiver<'a, SER_ERR> {
+    pub fn queue_empty(&self) -> bool {
+        self.rx_queue.is_empty()
+    }
+
+    pub fn queue_full(&self) -> bool {
+        self.rx_queue.is_full()
+    }
+
+    pub fn unpack_and_parse_buffer<'d>(&'d self) -> Result<ApiData<'d>, XBeeApiError> {
+        let ret = match api_frame::unpack_frame(self.rx_queue.as_slice(), false, false) {
+            Ok((frame, _rem)) => ApiData::parse(frame).map_err(|err| XBeeApiError::Parse(err)),
+            Err(err) => Err(XBeeApiError::Unpack(err)),
+        };
+
+        ret
+    }
+
+    pub fn remove_until_packet(&mut self) -> Result<usize, ()>{
+        self.rx_queue.remove_until_start()
+    }
+
+    pub fn remove_until_next_packet(&mut self) -> Result<usize, ()>{
+        if let Some(_) = self.rx_queue.pop_at(0) {
+            self.remove_until_packet().map(|len| len + 1)
+        } else {
+            Ok(0)
         }
     }
+}
+
+impl<'a, SER_ERR> Drop for XBeeApiReceiver<'a, SER_ERR> {
+    fn drop(&mut self) {}
 }

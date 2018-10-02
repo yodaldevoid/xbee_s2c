@@ -4,6 +4,8 @@ version = "0.1.0"
 authors = ["Gabriel Smith <ga29smith@gmail.com>"]
 
 [dependencies]
+arraydeque = { version = "^0.4", default-features = false }
+arrayvec = { version = "^0.4", default-features = false, features = ["use_union"] }
 bitflags = "^1.0"
-embedded-hal = { version = "0.1.2", features = ["unproven"] }
+embedded-hal = { version = "0.2.1", features = ["unproven"] }
 nb = "0.1.1"
