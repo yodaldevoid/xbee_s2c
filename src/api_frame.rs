@@ -877,6 +877,28 @@ mod test {
     }
 
     #[test]
+    fn create_tx_request_test() {
+        use arrayvec::ArrayVec;
+
+        let frame = [
+            0x00,
+            0x01,
+            0x00, 0x13, 0xA2, 0x00, 0x41, 0x5D, 0x1D, 0xBB,
+            0x00,
+            0x54, 0x65, 0x73, 0x74, 0x69, 0x6E, 0x67,
+        ];
+        let mut vec: ArrayVec<[u8; 32]> = ArrayVec::new();
+        let tx_request = TxRequestIter::new(
+            1,
+            Addr::Long(0x0013_A200_415D_1DBB),
+            TxOptions::empty(),
+            b"Testing".iter().map(|v| *v),
+        );
+        vec.extend(tx_request);
+        assert_eq!(vec.as_slice(), &frame[..]);
+    }
+
+    #[test]
     fn packing_test() {
         use arrayvec::ArrayVec;
 
