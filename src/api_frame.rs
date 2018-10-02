@@ -2,10 +2,10 @@ use core::iter::ExactSizeIterator;
 
 use super::Addr;
 
-const START: u8 = 0x7E;
-const ESCAPE: u8 = 0x7D;
-const XON: u8 = 0x11;
-const XOFF: u8 = 0x13;
+pub const START: u8 = 0x7E;
+pub const ESCAPE: u8 = 0x7D;
+pub const XON: u8 = 0x11;
+pub const XOFF: u8 = 0x13;
 
 #[derive(Debug)]
 pub enum ApiPackError {
@@ -90,40 +90,47 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum ApiUnpackError {
     NoStart,
-    BadLength,
+    BadLength(usize),
     BadChecksum(u8),
 }
 
+/// Returns the data portion of the frame and any remaining part of the buffer on success.
+///
+/// Currently escaped and encrypted modes are not supported.
 pub fn unpack_frame(
     buf: &[u8],
     escaped: bool,
     _encryption: bool
-) -> Result<&[u8], ApiUnpackError> {
+) -> Result<(&[u8], &[u8]), ApiUnpackError> {
     if buf.is_empty() {
         return Err(ApiUnpackError::NoStart)
     }
 
-    let start = if !escaped {
-        buf.iter().position(|&b| b == START)
+    if !escaped {
+        if buf[0] != START {
+            return Err(ApiUnpackError::NoStart)
+        }
     } else {
         unimplemented!()
-    }.ok_or(ApiUnpackError::NoStart)?;
+    }
 
-    let buf = &buf[start + 1..];
+    let buf = &buf[1..];
 
     let (len, buf) = buf.split_at(2);
     let len = ((len[0] as u16) << 8 | (len[1] as u16)) as usize;
     if len + 1 > buf.len() {
-        return Err(ApiUnpackError::BadLength)
+        return Err(ApiUnpackError::BadLength(3 + len + 1))
     }
+
+    let (buf, rem) = buf.split_at(len + 1);
 
     let (checksum, data) = buf.split_last().unwrap();
     let check = data.iter().fold(0, |acc: u8, &val| acc.wrapping_add(val));
     if checksum.wrapping_add(check) == 0xFF {
-        Ok(data)
+        Ok((data, rem))
     } else {
         Err(ApiUnpackError::BadChecksum(check))
     }
@@ -376,7 +383,7 @@ impl<'a> ApiData<'a> {
         let len = data.len();
         let mut iter = data.iter();
         match *iter.next().unwrap() {
-            // TODO: test if you can have en empty payload
+            // TODO: test if you can have en empty payload. Currently assumes no.
             0x00 if len > 10 => {
                 let frame_id = *iter.next().unwrap();
                 let dest_addr =
@@ -861,8 +868,11 @@ mod test {
         let frame = [
             0x7E, 0x00, 0x0A, 0x01, 0x01, 0x50, 0x01,
             0x00, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0xB8,
+            // extra data
+            0x7E, 0x01, 0x02,
         ];
-        let unpacked_data = unpack_frame(&frame[..], false, false).unwrap();
+        let (unpacked_data, rem) = unpack_frame(&frame[..], false, false).unwrap();
         assert_eq!(unpacked_data, &[0x01, 0x01, 0x50, 0x01, 0x00, 0x48, 0x65, 0x6C, 0x6C, 0x6F]);
+        assert_eq!(rem, &[0x7E, 0x01, 0x02]);
     }
 }

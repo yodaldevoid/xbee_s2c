@@ -7,7 +7,7 @@ extern crate bitflags;
 extern crate embedded_hal;
 extern crate nb;
 
-mod api_frame;
+pub mod api_frame;
 
 use api_frame::{FramePacker, TxOptions, TxRequestIter};
 
