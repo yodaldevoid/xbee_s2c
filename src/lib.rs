@@ -94,19 +94,19 @@ pub enum XBeeApiError {
 }
 
 // TODO: xbee reset pin
-pub struct XBeeApiSpi<'a, 'b, 'c, SER: 'a, CS: 'b, ATTN: 'c> {
-    serial: &'a mut SER,
-    cs: Option<&'b mut CS>,
-    attn: &'c mut ATTN,
+pub struct XBeeApiSpi<'a, 'b, 'c, S: 'a, C: 'b, A: 'c> {
+    serial: &'a mut S,
+    cs: Option<&'b mut C>,
+    attn: &'c mut A,
 
     // TODO: make generic and allow passing in buffers
     tx_queue: ArrayDeque<[u8; 512]>,
     rx_queue: ArrayVec<[u8; 512]>,
 }
 
-impl<'a, 'b, SER_ERR, U, D> XBeeTransparent<'a, 'b, U, D>
+impl<'a, 'b, E, U, D> XBeeTransparent<'a, 'b, U, D>
 where
-    U: Read<u8, Error = SER_ERR> + BlockingWrite<u8, Error = SER_ERR>,
+    U: Read<u8, Error = E> + BlockingWrite<u8, Error = E>,
     D: DelayMs<u16>,
 {
     pub fn new(
@@ -124,7 +124,7 @@ where
     }
 
     // TODO: maybe return result to show that the command has
-    pub fn enter_command_mode(&mut self) -> Result<(), SER_ERR> {
+    pub fn enter_command_mode(&mut self) -> Result<(), E> {
         // wait for guard time
         self.timer.delay_ms(self.guard_time);
         // send command character x3
@@ -176,17 +176,17 @@ where
     }
 }
 
-impl<'a, 'b, 'c, SER_ERR, SER, CS, ATTN> XBeeApiSpi<'a, 'b, 'c, SER, CS, ATTN>
+impl<'a, 'b, 'c, E, S, C, A> XBeeApiSpi<'a, 'b, 'c, S, C, A>
 where
-    SER: FullDuplex<u8, Error = SER_ERR>,
-    CS: OutputPin,
-    ATTN: InputPin,
+    S: FullDuplex<u8, Error = E>,
+    C: OutputPin,
+    A: InputPin,
 {
     pub fn new(
-        spi: &'a mut SER,
-        cs: Option<&'b mut CS>,
-        attn: &'c mut ATTN,
-    ) -> XBeeApiSpi<'a, 'b, 'c, SER, CS, ATTN> {
+        spi: &'a mut S,
+        cs: Option<&'b mut C>,
+        attn: &'c mut A,
+    ) -> XBeeApiSpi<'a, 'b, 'c, S, C, A> {
         XBeeApiSpi {
             serial: spi,
             cs,
@@ -213,7 +213,7 @@ where
     }
 
     // TODO: differentiate between errors from reading and writing
-    pub fn transmit_and_receive(&mut self) -> Result<bool, SER_ERR> {
+    pub fn transmit_and_receive(&mut self) -> Result<bool, E> {
         if let Some(ref mut cs) = self.cs {
             cs.set_low();
         }
@@ -227,7 +227,7 @@ where
         ret
     }
 
-    pub fn tx_rx_internal(&mut self) -> Result<bool, SER_ERR> {
+    pub fn tx_rx_internal(&mut self) -> Result<bool, E> {
         let mut val_read = false;
         let mut attn_val;
         while {
@@ -258,7 +258,7 @@ where
         Ok(val_read)
     }
 
-    pub fn get_sender_receiver<'d>(&'d mut self) -> (XBeeApiSender<'d, SER_ERR>, XBeeApiReceiver<'d, SER_ERR>) {
+    pub fn get_sender_receiver<'d>(&'d mut self) -> (XBeeApiSender<'d, E>, XBeeApiReceiver<'d, E>) {
         let tx_queue = &mut self.tx_queue;
         let rx_queue = &mut self.rx_queue;
 
@@ -276,13 +276,13 @@ where
 }
 
 #[derive(Debug)]
-pub struct XBeeApiSender<'a, SER_ERR> {
+pub struct XBeeApiSender<'a, E> {
     // TODO: make generic
     tx_queue: &'a mut ArrayDeque<[u8; 512]>,
-    _error: PhantomData<*const SER_ERR>,
+    _error: PhantomData<*const E>,
 }
 
-impl<'a, SER_ERR> XBeeApiSender<'a, SER_ERR> {
+impl<'a, E> XBeeApiSender<'a, E> {
     pub fn queue_empty(&self) -> bool {
         self.tx_queue.is_empty()
     }
@@ -291,13 +291,13 @@ impl<'a, SER_ERR> XBeeApiSender<'a, SER_ERR> {
         self.tx_queue.is_full()
     }
 
-    pub fn send_data_raw(&mut self, data: &[u8]) -> Result<(), SER_ERR> {
+    pub fn send_data_raw(&mut self, data: &[u8]) -> Result<(), E> {
         // TODO: error handling if we do not have enough space
         self.tx_queue.extend(data.iter().map(|&x| x));
         Ok(())
     }
 
-    pub fn send_data(&mut self, frame_id: u8, addr: Addr, data: &[u8]) -> Result<(), SER_ERR> {
+    pub fn send_data(&mut self, frame_id: u8, addr: Addr, data: &[u8]) -> Result<(), E> {
         let tx_request = TxRequestIter::new(
             frame_id,
             addr,
@@ -315,7 +315,7 @@ impl<'a, SER_ERR> XBeeApiSender<'a, SER_ERR> {
         Ok(())
     }
 
-    pub fn send_data_no_ack(&mut self, frame_id: u8, addr: Addr, data: &[u8]) -> Result<(), SER_ERR> {
+    pub fn send_data_no_ack(&mut self, frame_id: u8, addr: Addr, data: &[u8]) -> Result<(), E> {
         let tx_request = TxRequestIter::new(
             frame_id,
             addr,
@@ -346,17 +346,17 @@ impl<'a, SER_ERR> XBeeApiSender<'a, SER_ERR> {
     }
 }
 
-impl<'a, SER_ERR> Drop for XBeeApiSender<'a, SER_ERR> {
+impl<'a, E> Drop for XBeeApiSender<'a, E> {
     fn drop(&mut self) {}
 }
 
-pub struct XBeeApiReceiver<'a, SER_ERR> {
+pub struct XBeeApiReceiver<'a, E> {
     // TODO: make generic
     rx_queue: &'a mut ArrayVec<[u8; 512]>,
-    _error: PhantomData<*const SER_ERR>,
+    _error: PhantomData<*const E>,
 }
 
-impl<'a, SER_ERR> XBeeApiReceiver<'a, SER_ERR> {
+impl<'a, E> XBeeApiReceiver<'a, E> {
     pub fn queue_empty(&self) -> bool {
         self.rx_queue.is_empty()
     }
@@ -391,6 +391,6 @@ impl<'a, SER_ERR> XBeeApiReceiver<'a, SER_ERR> {
     }
 }
 
-impl<'a, SER_ERR> Drop for XBeeApiReceiver<'a, SER_ERR> {
+impl<'a, E> Drop for XBeeApiReceiver<'a, E> {
     fn drop(&mut self) {}
 }
