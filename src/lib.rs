@@ -79,6 +79,7 @@ pub enum Addr {
     Long(u64),
 }
 
+// TODO: xbee reset pin
 pub struct XBeeTransparent<'a, 'b, U: 'a, D: 'b> {
     serial: &'a mut U,
     timer: &'b mut D,
@@ -92,6 +93,7 @@ pub enum XBeeApiError {
     Parse(()),
 }
 
+// TODO: xbee reset pin
 pub struct XBeeApiSpi<'a, 'b, 'c, SER: 'a, CS: 'b, ATTN: 'c> {
     serial: &'a mut SER,
     cs: Option<&'b mut CS>,
@@ -212,6 +214,20 @@ where
 
     // TODO: differentiate between errors from reading and writing
     pub fn transmit_and_receive(&mut self) -> Result<bool, SER_ERR> {
+        if let Some(ref mut cs) = self.cs {
+            cs.set_low();
+        }
+
+        let ret = self.tx_rx_internal();
+
+        if let Some(ref mut cs) = self.cs {
+            cs.set_high();
+        }
+
+        ret
+    }
+
+    pub fn tx_rx_internal(&mut self) -> Result<bool, SER_ERR> {
         let mut val_read = false;
         let mut attn_val;
         while {
