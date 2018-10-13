@@ -385,6 +385,10 @@ impl<'a, SER_ERR> XBeeApiReceiver<'a, SER_ERR> {
             Ok(0)
         }
     }
+
+    pub fn as_slice(&self) -> &[u8] {
+        self.rx_queue.as_slice()
+    }
 }
 
 impl<'a, SER_ERR> Drop for XBeeApiReceiver<'a, SER_ERR> {
