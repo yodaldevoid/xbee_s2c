@@ -14,13 +14,7 @@ pub mod api_frame;
 
 use core::marker::PhantomData;
 
-use api_frame::{
-    ApiData,
-    ApiUnpackError,
-    FramePacker,
-    TxOptions,
-    TxRequestIter,
-};
+use api_frame::{ApiData, ApiUnpackError, FramePacker, TxOptions, TxRequestIter};
 
 use arraydeque::ArrayDeque;
 use arrayvec::{Array, ArrayVec};
@@ -40,14 +34,14 @@ trait XBeeQueue {
 
 impl<A> XBeeQueue for ArrayVec<A>
 where
-    A: Array<Item=u8>,
+    A: Array<Item = u8>,
 {
     fn remove_until_start(&mut self) -> Result<usize, ()> {
         match self.iter().position(|c| c == &api_frame::START) {
             Some(size) => {
                 self.remove_exact(size)?;
                 Ok(size)
-            },
+            }
             None => {
                 let len = self.len();
                 self.clear();
@@ -58,7 +52,7 @@ where
 
     fn remove_exact(&mut self, amount: usize) -> Result<(), ()> {
         if amount == 0 {
-            return Ok(())
+            return Ok(());
         }
 
         if amount <= self.len() {
@@ -298,17 +292,9 @@ impl<'a, E> XBeeApiSender<'a, E> {
     }
 
     pub fn send_data(&mut self, frame_id: u8, addr: Addr, data: &[u8]) -> Result<(), E> {
-        let tx_request = TxRequestIter::new(
-            frame_id,
-            addr,
-            TxOptions::empty(),
-            data.iter().map(|v| *v),
-        );
-        let frame = FramePacker::new(
-            tx_request,
-            false,
-            false,
-        ).expect("packing error"); // TODO:
+        let tx_request =
+            TxRequestIter::new(frame_id, addr, TxOptions::empty(), data.iter().map(|v| *v));
+        let frame = FramePacker::new(tx_request, false, false).expect("packing error"); // TODO:
 
         // TODO: error handling if we do not have enough space
         self.tx_queue.extend(frame);
@@ -322,11 +308,7 @@ impl<'a, E> XBeeApiSender<'a, E> {
             TxOptions::DISABLE_ACK,
             data.iter().map(|v| *v),
         );
-        let frame = FramePacker::new(
-            tx_request,
-            false,
-            false,
-        ).expect("packing error"); // TODO:
+        let frame = FramePacker::new(tx_request, false, false).expect("packing error"); // TODO:
 
         // TODO: error handling if we do not have enough space
         self.tx_queue.extend(frame);
@@ -374,11 +356,11 @@ impl<'a, E> XBeeApiReceiver<'a, E> {
         ret
     }
 
-    pub fn remove_until_packet(&mut self) -> Result<usize, ()>{
+    pub fn remove_until_packet(&mut self) -> Result<usize, ()> {
         self.rx_queue.remove_until_start()
     }
 
-    pub fn remove_until_next_packet(&mut self) -> Result<usize, ()>{
+    pub fn remove_until_next_packet(&mut self) -> Result<usize, ()> {
         if let Some(_) = self.rx_queue.pop_at(0) {
             self.remove_until_packet().map(|len| len + 1)
         } else {

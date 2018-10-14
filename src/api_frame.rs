@@ -38,18 +38,18 @@ where
 {
     pub fn new(data: I, escaped: bool, encrypted: bool) -> Result<FramePacker<I>, ApiPackError> {
         if data.len() == 0 {
-            return Err(ApiPackError::TooShort)
+            return Err(ApiPackError::TooShort);
         }
 
         if data.len() > u16::max_value() as usize {
-            return Err(ApiPackError::TooLong)
+            return Err(ApiPackError::TooLong);
         }
 
         Ok(FramePacker {
             state: FramePackingState::Start,
             escaped,
             encrypted,
-            data: data,
+            data,
             checksum: 0,
         })
     }
@@ -103,15 +103,15 @@ pub enum ApiUnpackError {
 pub fn unpack_frame(
     buf: &[u8],
     escaped: bool,
-    _encryption: bool
+    _encryption: bool,
 ) -> Result<(&[u8], &[u8]), ApiUnpackError> {
     if buf.is_empty() {
-        return Err(ApiUnpackError::NoStart)
+        return Err(ApiUnpackError::NoStart);
     }
 
     if !escaped {
         if buf[0] != START {
-            return Err(ApiUnpackError::NoStart)
+            return Err(ApiUnpackError::NoStart);
         }
     } else {
         unimplemented!()
@@ -122,7 +122,7 @@ pub fn unpack_frame(
     let (len, buf) = buf.split_at(2);
     let len = ((len[0] as u16) << 8 | (len[1] as u16)) as usize;
     if len + 1 > buf.len() {
-        return Err(ApiUnpackError::BadLength(3 + len + 1))
+        return Err(ApiUnpackError::BadLength(3 + len + 1));
     }
 
     let (buf, rem) = buf.split_at(len + 1);
@@ -176,15 +176,15 @@ bitflags! {
 impl ChannelIndicator {
     fn contains_digital(&self) -> bool {
         self.contains(
-            ChannelIndicator::D0 |
-            ChannelIndicator::D1 |
-            ChannelIndicator::D2 |
-            ChannelIndicator::D3 |
-            ChannelIndicator::D4 |
-            ChannelIndicator::D5 |
-            ChannelIndicator::D6 |
-            ChannelIndicator::D7 |
-            ChannelIndicator::D8
+            ChannelIndicator::D0
+                | ChannelIndicator::D1
+                | ChannelIndicator::D2
+                | ChannelIndicator::D3
+                | ChannelIndicator::D4
+                | ChannelIndicator::D5
+                | ChannelIndicator::D6
+                | ChannelIndicator::D7
+                | ChannelIndicator::D8,
         )
     }
 }
@@ -196,7 +196,7 @@ pub enum AtCommandStatus {
     InvalidCommand = 2,
     InvalidParam = 3,
     NoResponse = 4,
-    Unknown
+    Unknown,
 }
 
 #[derive(Debug, PartialEq)]
@@ -363,19 +363,19 @@ pub enum ApiData<'a> {
 impl<'a> ApiData<'a> {
     fn frame_type(&self) -> u8 {
         match *self {
-            ApiData::TxRequest64Addr{ .. } => 0x00,
-            ApiData::TxRequest16Addr{ .. } => 0x01,
-            ApiData::AtCommand{ .. } => 0x08,
-            ApiData::AtCommandQueueParam{ .. } => 0x09,
-            ApiData::RemoteAtCommand{ .. } => 0x17,
-            ApiData::RxPacket64Addr{ .. } => 0x80,
-            ApiData::RxPacket16Addr{ .. } => 0x81,
-            ApiData::RxPacketIo64Addr{ .. } => 0x82,
-            ApiData::RxPacketIo16Addr{ .. } => 0x83,
-            ApiData::AtCommandResponse{ .. } => 0x88,
-            ApiData::TxStatus{ .. } => 0x89,
-            ApiData::ModemStatus{ .. } => 0x8A,
-            ApiData::RemoteAtCommandResponse{ .. } => 0x97,
+            ApiData::TxRequest64Addr { .. } => 0x00,
+            ApiData::TxRequest16Addr { .. } => 0x01,
+            ApiData::AtCommand { .. } => 0x08,
+            ApiData::AtCommandQueueParam { .. } => 0x09,
+            ApiData::RemoteAtCommand { .. } => 0x17,
+            ApiData::RxPacket64Addr { .. } => 0x80,
+            ApiData::RxPacket16Addr { .. } => 0x81,
+            ApiData::RxPacketIo64Addr { .. } => 0x82,
+            ApiData::RxPacketIo16Addr { .. } => 0x83,
+            ApiData::AtCommandResponse { .. } => 0x88,
+            ApiData::TxStatus { .. } => 0x89,
+            ApiData::ModemStatus { .. } => 0x8A,
+            ApiData::RemoteAtCommandResponse { .. } => 0x97,
         }
     }
 
@@ -386,15 +386,14 @@ impl<'a> ApiData<'a> {
             // TODO: test if you can have en empty payload. Currently assumes no.
             0x00 if len > 10 => {
                 let frame_id = *iter.next().unwrap();
-                let dest_addr =
-                    ((*iter.next().unwrap() as u64) << 56) |
-                    ((*iter.next().unwrap() as u64) << 48) |
-                    ((*iter.next().unwrap() as u64) << 40) |
-                    ((*iter.next().unwrap() as u64) << 32) |
-                    ((*iter.next().unwrap() as u64) << 24) |
-                    ((*iter.next().unwrap() as u64) << 16) |
-                    ((*iter.next().unwrap() as u64) << 8) |
-                    (*iter.next().unwrap() as u64);
+                let dest_addr = ((*iter.next().unwrap() as u64) << 56)
+                    | ((*iter.next().unwrap() as u64) << 48)
+                    | ((*iter.next().unwrap() as u64) << 40)
+                    | ((*iter.next().unwrap() as u64) << 32)
+                    | ((*iter.next().unwrap() as u64) << 24)
+                    | ((*iter.next().unwrap() as u64) << 16)
+                    | ((*iter.next().unwrap() as u64) << 8)
+                    | (*iter.next().unwrap() as u64);
                 let options = TxOptions::from_bits_truncate(*iter.next().unwrap());
 
                 Ok(ApiData::TxRequest64Addr {
@@ -407,8 +406,8 @@ impl<'a> ApiData<'a> {
             // TODO: test if you can have en empty payload
             0x01 if len > 4 => {
                 let frame_id = *iter.next().unwrap();
-                let dest_addr = ((*iter.next().unwrap() as u16) << 8) |
-                                 (*iter.next().unwrap() as u16);
+                let dest_addr =
+                    ((*iter.next().unwrap() as u16) << 8) | (*iter.next().unwrap() as u16);
                 let options = TxOptions::from_bits_truncate(*iter.next().unwrap());
 
                 Ok(ApiData::TxRequest16Addr {
@@ -440,18 +439,16 @@ impl<'a> ApiData<'a> {
             }
             0x17 if len > 13 => {
                 let frame_id = *iter.next().unwrap();
-                let dest_addr_64 =
-                    ((*iter.next().unwrap() as u64) << 56) |
-                    ((*iter.next().unwrap() as u64) << 48) |
-                    ((*iter.next().unwrap() as u64) << 40) |
-                    ((*iter.next().unwrap() as u64) << 32) |
-                    ((*iter.next().unwrap() as u64) << 24) |
-                    ((*iter.next().unwrap() as u64) << 16) |
-                    ((*iter.next().unwrap() as u64) << 8) |
-                    (*iter.next().unwrap() as u64);
+                let dest_addr_64 = ((*iter.next().unwrap() as u64) << 56)
+                    | ((*iter.next().unwrap() as u64) << 48)
+                    | ((*iter.next().unwrap() as u64) << 40)
+                    | ((*iter.next().unwrap() as u64) << 32)
+                    | ((*iter.next().unwrap() as u64) << 24)
+                    | ((*iter.next().unwrap() as u64) << 16)
+                    | ((*iter.next().unwrap() as u64) << 8)
+                    | (*iter.next().unwrap() as u64);
                 let dest_addr_16 =
-                    ((*iter.next().unwrap() as u16) << 8) |
-                    (*iter.next().unwrap() as u16);
+                    ((*iter.next().unwrap() as u16) << 8) | (*iter.next().unwrap() as u16);
                 let at_cmd = [*iter.next().unwrap(), *iter.next().unwrap()];
 
                 Ok(ApiData::RemoteAtCommand {
@@ -463,15 +460,14 @@ impl<'a> ApiData<'a> {
                 })
             }
             0x80 if len > 10 => {
-                let source_addr =
-                    ((*iter.next().unwrap() as u64) << 56) |
-                    ((*iter.next().unwrap() as u64) << 48) |
-                    ((*iter.next().unwrap() as u64) << 40) |
-                    ((*iter.next().unwrap() as u64) << 32) |
-                    ((*iter.next().unwrap() as u64) << 24) |
-                    ((*iter.next().unwrap() as u64) << 16) |
-                    ((*iter.next().unwrap() as u64) << 8) |
-                    (*iter.next().unwrap() as u64);
+                let source_addr = ((*iter.next().unwrap() as u64) << 56)
+                    | ((*iter.next().unwrap() as u64) << 48)
+                    | ((*iter.next().unwrap() as u64) << 40)
+                    | ((*iter.next().unwrap() as u64) << 32)
+                    | ((*iter.next().unwrap() as u64) << 24)
+                    | ((*iter.next().unwrap() as u64) << 16)
+                    | ((*iter.next().unwrap() as u64) << 8)
+                    | (*iter.next().unwrap() as u64);
                 let rssi = *iter.next().unwrap();
                 let options = RxOptions::from_bits_truncate(*iter.next().unwrap());
 
@@ -483,8 +479,8 @@ impl<'a> ApiData<'a> {
                 })
             }
             0x81 if len > 4 => {
-                let source_addr = ((*iter.next().unwrap() as u16) << 8) |
-                                   (*iter.next().unwrap() as u16);
+                let source_addr =
+                    ((*iter.next().unwrap() as u16) << 8) | (*iter.next().unwrap() as u16);
                 let rssi = *iter.next().unwrap();
                 let options = RxOptions::from_bits_truncate(*iter.next().unwrap());
 
@@ -496,23 +492,20 @@ impl<'a> ApiData<'a> {
                 })
             }
             0x82 if len > 13 => {
-                let source_addr =
-                    ((*iter.next().unwrap() as u64) << 56) |
-                    ((*iter.next().unwrap() as u64) << 48) |
-                    ((*iter.next().unwrap() as u64) << 40) |
-                    ((*iter.next().unwrap() as u64) << 32) |
-                    ((*iter.next().unwrap() as u64) << 24) |
-                    ((*iter.next().unwrap() as u64) << 16) |
-                    ((*iter.next().unwrap() as u64) << 8) |
-                    (*iter.next().unwrap() as u64);
+                let source_addr = ((*iter.next().unwrap() as u64) << 56)
+                    | ((*iter.next().unwrap() as u64) << 48)
+                    | ((*iter.next().unwrap() as u64) << 40)
+                    | ((*iter.next().unwrap() as u64) << 32)
+                    | ((*iter.next().unwrap() as u64) << 24)
+                    | ((*iter.next().unwrap() as u64) << 16)
+                    | ((*iter.next().unwrap() as u64) << 8)
+                    | (*iter.next().unwrap() as u64);
                 let rssi = *iter.next().unwrap();
                 let options = RxOptions::from_bits_truncate(*iter.next().unwrap());
                 let samples = *iter.next().unwrap();
-                let channel_indicator =
-                    ChannelIndicator::from_bits_truncate(
-                        ((*iter.next().unwrap() as u16) << 8) |
-                        (*iter.next().unwrap() as u16)
-                    );
+                let channel_indicator = ChannelIndicator::from_bits_truncate(
+                    ((*iter.next().unwrap() as u16) << 8) | (*iter.next().unwrap() as u16),
+                );
                 let digital_samples = if channel_indicator.contains_digital() {
                     Some(((*iter.next().unwrap() as u16) << 8) | (*iter.next().unwrap() as u16))
                 } else {
@@ -552,16 +545,13 @@ impl<'a> ApiData<'a> {
             }
             0x83 if len > 7 => {
                 let source_addr =
-                    ((*iter.next().unwrap() as u16) << 8) |
-                    (*iter.next().unwrap() as u16);
+                    ((*iter.next().unwrap() as u16) << 8) | (*iter.next().unwrap() as u16);
                 let rssi = *iter.next().unwrap();
                 let options = RxOptions::from_bits_truncate(*iter.next().unwrap());
                 let samples = *iter.next().unwrap();
-                let channel_indicator =
-                    ChannelIndicator::from_bits_truncate(
-                        ((*iter.next().unwrap() as u16) << 8) |
-                        (*iter.next().unwrap() as u16)
-                    );
+                let channel_indicator = ChannelIndicator::from_bits_truncate(
+                    ((*iter.next().unwrap() as u16) << 8) | (*iter.next().unwrap() as u16),
+                );
                 let digital_samples = if channel_indicator.contains_digital() {
                     Some(((*iter.next().unwrap() as u16) << 8) | (*iter.next().unwrap() as u16))
                 } else {
@@ -621,32 +611,25 @@ impl<'a> ApiData<'a> {
                 let frame_id = *iter.next().unwrap();
                 let status = TxStatus::from(*iter.next().unwrap());
 
-                Ok(ApiData::TxStatus {
-                    frame_id,
-                    status,
-                })
+                Ok(ApiData::TxStatus { frame_id, status })
             }
             0x8A if len == 2 => {
                 let status = ModemStatus::from(*iter.next().unwrap());
 
-                Ok(ApiData::ModemStatus {
-                    status,
-                })
+                Ok(ApiData::ModemStatus { status })
             }
             0x97 if len > 14 => {
                 let frame_id = *iter.next().unwrap();
-                let source_addr_64 =
-                    ((*iter.next().unwrap() as u64) << 56) |
-                    ((*iter.next().unwrap() as u64) << 48) |
-                    ((*iter.next().unwrap() as u64) << 40) |
-                    ((*iter.next().unwrap() as u64) << 32) |
-                    ((*iter.next().unwrap() as u64) << 24) |
-                    ((*iter.next().unwrap() as u64) << 16) |
-                    ((*iter.next().unwrap() as u64) << 8) |
-                    (*iter.next().unwrap() as u64);
+                let source_addr_64 = ((*iter.next().unwrap() as u64) << 56)
+                    | ((*iter.next().unwrap() as u64) << 48)
+                    | ((*iter.next().unwrap() as u64) << 40)
+                    | ((*iter.next().unwrap() as u64) << 32)
+                    | ((*iter.next().unwrap() as u64) << 24)
+                    | ((*iter.next().unwrap() as u64) << 16)
+                    | ((*iter.next().unwrap() as u64) << 8)
+                    | (*iter.next().unwrap() as u64);
                 let source_addr_16 =
-                    ((*iter.next().unwrap() as u16) << 8) |
-                    (*iter.next().unwrap() as u16);
+                    ((*iter.next().unwrap() as u16) << 8) | (*iter.next().unwrap() as u16);
                 let at_cmd = [*iter.next().unwrap(), *iter.next().unwrap()];
                 let status = match *iter.next().unwrap() {
                     0 => AtCommandStatus::Ok,
@@ -692,19 +675,10 @@ impl<I> TxRequestIter<I>
 where
     I: ExactSizeIterator<Item = u8>,
 {
-    pub fn new(
-        frame_id: u8,
-        addr: Addr,
-        options: TxOptions,
-        data: I,
-    ) -> TxRequestIter<I> {
+    pub fn new(frame_id: u8, addr: Addr, options: TxOptions, data: I) -> TxRequestIter<I> {
         let (addr, addr_shift) = match addr {
-            Addr::Long(addr) => {
-                (addr, 56)
-            }
-            Addr::Short(addr) => {
-                (addr as u64, 8)
-            }
+            Addr::Long(addr) => (addr, 56),
+            Addr::Short(addr) => (addr as u64, 8),
         };
 
         TxRequestIter {
@@ -731,8 +705,8 @@ where
                 self.state = TxRequestState::FrameId;
                 match self.addr_shift {
                     56 => Some(0x00), // TxRequest64Addr
-                    8 => Some(0x01), // TxRequest16Addr
-                    _ => unreachable!()
+                    8 => Some(0x01),  // TxRequest16Addr
+                    _ => unreachable!(),
                 }
             }
             TxRequestState::FrameId => {
@@ -752,29 +726,21 @@ where
                 self.state = TxRequestState::Data;
                 Some(self.options.bits())
             }
-            TxRequestState::Data => {
-                self.data.next()
-            }
+            TxRequestState::Data => self.data.next(),
         }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         let size = match self.state {
             TxRequestState::FrameType => {
-                2 + ((self.addr_shift as usize)/8 + 1) + 1 + self.data.len()
+                2 + ((self.addr_shift as usize) / 8 + 1) + 1 + self.data.len()
             }
             TxRequestState::FrameId => {
-                1 + ((self.addr_shift as usize)/8 + 1) + 1 + self.data.len()
+                1 + ((self.addr_shift as usize) / 8 + 1) + 1 + self.data.len()
             }
-            TxRequestState::Addr => {
-                ((self.addr_shift as usize)/8 + 1)  + 1 + self.data.len()
-            }
-            TxRequestState::Options => {
-                1 + self.data.len()
-            }
-            TxRequestState::Data => {
-                self.data.len()
-            }
+            TxRequestState::Addr => ((self.addr_shift as usize) / 8 + 1) + 1 + self.data.len(),
+            TxRequestState::Options => 1 + self.data.len(),
+            TxRequestState::Data => self.data.len(),
         };
 
         (size, Some(size))
@@ -788,20 +754,14 @@ where
     fn len(&self) -> usize {
         match self.state {
             TxRequestState::FrameType => {
-                2 + ((self.addr_shift as usize)/8 + 1) + 1 + self.data.len()
+                2 + ((self.addr_shift as usize) / 8 + 1) + 1 + self.data.len()
             }
             TxRequestState::FrameId => {
-                1 + ((self.addr_shift as usize)/8 + 1) + 1 + self.data.len()
+                1 + ((self.addr_shift as usize) / 8 + 1) + 1 + self.data.len()
             }
-            TxRequestState::Addr => {
-                ((self.addr_shift as usize)/8 + 1)  + 1 + self.data.len()
-            }
-            TxRequestState::Options => {
-                1 + self.data.len()
-            }
-            TxRequestState::Data => {
-                self.data.len()
-            }
+            TxRequestState::Addr => ((self.addr_shift as usize) / 8 + 1) + 1 + self.data.len(),
+            TxRequestState::Options => 1 + self.data.len(),
+            TxRequestState::Data => self.data.len(),
         }
     }
 }
@@ -881,13 +841,15 @@ mod test {
     #[test]
     fn unpack_frame_test() {
         let frame = [
-            0x7E, 0x00, 0x0A, 0x01, 0x01, 0x50, 0x01,
-            0x00, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0xB8,
+            0x7E, 0x00, 0x0A, 0x01, 0x01, 0x50, 0x01, 0x00, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0xB8,
             // extra data
             0x7E, 0x01, 0x02,
         ];
         let (unpacked_data, rem) = unpack_frame(&frame[..], false, false).unwrap();
-        assert_eq!(unpacked_data, &[0x01, 0x01, 0x50, 0x01, 0x00, 0x48, 0x65, 0x6C, 0x6C, 0x6F]);
+        assert_eq!(
+            unpacked_data,
+            &[0x01, 0x01, 0x50, 0x01, 0x00, 0x48, 0x65, 0x6C, 0x6C, 0x6F]
+        );
         assert_eq!(rem, &[0x7E, 0x01, 0x02]);
     }
 
@@ -895,6 +857,7 @@ mod test {
     fn create_tx_request_test() {
         use arrayvec::ArrayVec;
 
+        #[cfg_attr(rustfmt, rustfmt_skip)]
         let frame = [
             0x00,
             0x01,
@@ -917,6 +880,7 @@ mod test {
     fn packing_test() {
         use arrayvec::ArrayVec;
 
+        #[cfg_attr(rustfmt, rustfmt_skip)]
         let data = [
             0x00,
             0x01,
@@ -924,6 +888,7 @@ mod test {
             0x00,
             0x54, 0x65, 0x73, 0x74, 0x69, 0x6E, 0x67,
         ];
+        #[cfg_attr(rustfmt, rustfmt_skip)]
         let test_frame = [
             0x7E,
             0x00, 0x12,
@@ -935,11 +900,8 @@ mod test {
             0xF5,
         ];
         let mut vec: ArrayVec<[u8; 32]> = ArrayVec::new();
-        let packed_frame = FramePacker::new(
-            data.iter().map(|v| *v),
-            false,
-            false,
-        ).expect("packing error");
+        let packed_frame =
+            FramePacker::new(data.iter().map(|v| *v), false, false).expect("packing error");
         vec.extend(packed_frame);
         assert_eq!(vec.as_slice(), &test_frame[..]);
     }
