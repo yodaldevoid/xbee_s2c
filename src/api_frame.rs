@@ -109,6 +109,10 @@ pub fn unpack_frame(
         return Err(ApiUnpackError::NoStart);
     }
 
+    if buf.len() < 4 {
+        return Err(ApiUnpackError::BadLength(4));
+    }
+
     if !escaped {
         if buf[0] != START {
             return Err(ApiUnpackError::NoStart);
@@ -256,7 +260,7 @@ impl ModemStatus {
     }
 }
 
-// TODO: maybe make sperate public faceing enums for send and recieve packets
+// TODO: maybe make separate public facing enums for send and recieve packets
 #[derive(Debug, PartialEq)]
 pub enum ApiData<'a> {
     // Send
